@@ -1,0 +1,48 @@
+name: Fetch and Release Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Name for the Release and Tag (e.g., Batman-Ep1)'
+        required: true
+        type: string
+      download_url:
+        description: 'Direct URL to download'
+        required: true
+        type: string
+
+jobs:
+  download-split-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Install aria2
+        run: sudo apt update && sudo apt install -y aria2
+
+      - name: Download File
+        run: |
+          aria2c -x 16 -s 16 -o downloaded_archive "${{ github.event.inputs.download_url }}"
+          
+      - name: Split File
+        run: |
+          split -b 1500M downloaded_archive part_
+          
+      - name: Create Release and Upload
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Convert repository name to lowercase
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          
+          # Create the release using the inputted release_name for both tag and title
+          gh release create "${{ github.event.inputs.release_name }}" \
+            --repo "$REPO_LOWER" \
+            --title "${{ github.event.inputs.release_name }}" \
+            --notes "Automated release fetched from: ${{ github.event.inputs.download_url }}"
+            
+          # Upload all split parts to the release
+          gh release upload "${{ github.event.inputs.release_name }}" part_* \
+            --repo "$REPO_LOWER"
